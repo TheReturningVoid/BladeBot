@@ -50,5 +50,6 @@ fabric.properties
 build/
 gradlew
 gradlew.bat
+.idea/
 
 
