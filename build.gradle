@@ -13,8 +13,10 @@ dependencies {
     compile 'org.scala-lang:scala-library:2.11.7'
     compile 'org.scala-lang:scala-reflect:2.11.7'
     compile 'commons-io:commons-io:2.4'
-    compile 'com.google.code.gson:gson:2.6.1'
+    compile 'com.google.code.gson:gson:2.6.2'
     compile 'jline:jline:2.8'
+    compile 'commons-validator:commons-validator:1.5.0'
+    compile 'com.typesafe.play:play-json_2.11:2.5.0'
 }
 
 repositories {

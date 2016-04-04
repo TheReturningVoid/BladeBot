@@ -1,11 +1,14 @@
 package net.thereturningvoid.bladebot.command
 
-import java.io.InputStream
+import java.io._
+import javafx.scene.Scene
 
 import net.dv8tion.jda.MessageBuilder
 import net.dv8tion.jda.events.message.MessageReceivedEvent
-import net.thereturningvoid.bladebot.song.{SoundcloudSong, SongResponse, SongQueue}
-import net.thereturningvoid.bladebot.util.{SoundcloudUtil, NumberUtil}
+import net.thereturningvoid.bladebot.song.SongQueue
+import net.thereturningvoid.bladebot.soundcloud.{SCTrack, SCResult}
+import net.thereturningvoid.bladebot.util.{FileUtil, NumberUtil}
+import org.apache.commons.io.IOUtils
 
 class SongQueueCommand extends Command {
 
@@ -19,8 +22,8 @@ class SongQueueCommand extends Command {
     s"${prefix}queue pause - [OP only] Pause the song in the queue.\n" +
     s"  - *${prefix}queue toggle* can be used to unpause the queue.\n" +
      "  - The song queue only supports SoundCloud songs at the moment. YouTube support is coming soon.\n"
-     "__Example:__\n*" +
-    prefix + "queue add https://soundcloud.com/karmafields/greatness* - Adds \"Karma Fields - Greatness (feat Talib Kweli)\" to the song queue."
+     "__Example:__\n" +
+    s"""*${prefix}queue add https://soundcloud.com/karmafields/greatness* - Adds "Karma Fields - Greatness (feat Talib Kweli)" to the song queue."""
 
   override def onCommand(e: MessageReceivedEvent, args: Array[String]): Unit = {
     if (!args.isEmpty) {
@@ -33,11 +36,11 @@ class SongQueueCommand extends Command {
             if (volume >= 0.0F && volume <= 1.0F) {
               SongQueue.queuePlayer.setVolume(volume)
               e.getTextChannel.sendMessage(new MessageBuilder()
-                .appendString("Volume set to " + Math.ceil(volume * 100.0F) + ".")
+                .appendString(s"Volume set to ${Math.ceil(volume * 100.0F)}.")
                 .build())
             } else if (volume == -1000.0F) {
               e.getTextChannel.sendMessage(new MessageBuilder()
-                .appendString("\"" + args(1) + "\" is not a number.")
+                .appendString(s""""${args(1)}" is not a number.""")
                 .build())
             } else {
               e.getTextChannel.sendMessage(new MessageBuilder()
@@ -73,14 +76,16 @@ class SongQueueCommand extends Command {
 
         // Add song command
         } else if (args.head.equalsIgnoreCase("add")) {
-          val stream: InputStream = SoundcloudUtil.getSoundcloudSongStream(SoundcloudUtil.getSoundcloudTrackObject(args(1)))
-          if (!hasError(e.getMessage.getContent, e)) {
-            val song: SoundcloudSong = new SoundcloudSong(SoundcloudUtil.getSoundcloudTrackObject(args(1)))
-            if (!hasError(song.get.getString("songName"), e)) {
+          val song: SCTrack = SCTrack(args(1))
+          if (!hasError(song.error.id)) {
+            val stream: Array[Byte] = IOUtils.toByteArray(song.getStream)
+            val streamStr: String = new String(stream)
+            val streamError: Int = if (NumberUtil.isInt(streamStr)) streamStr.toInt else 0
+            if (!hasError(streamError)) {
               SongQueue.addSongToQueue(song, stream)
-              val pos: Int = SongQueue.getObjectsInArray(SongQueue.getQueueJSONArray).indexOf(song)
+              val pos: Int = SongQueue.getObjectsInArray(SongQueue.getQueueJSONArray).map(s => s.title).indexOf(song.title)
               e.getTextChannel.sendMessage(new MessageBuilder()
-                .appendString("Added " + song.name + " to position " + pos + " of queue!")
+                .appendString(s"Added ${song.title} to position $pos of queue!")
                 .build())
             }
           }
@@ -109,7 +114,7 @@ class SongQueueCommand extends Command {
         }
       } else {
         e.getTextChannel.sendMessage(new MessageBuilder()
-          .appendString("Not connected to a voice channel! Use \"" + prefix + "voice\" to join a channel.")
+          .appendString(s"""Not connected to a voice channel! Use "${prefix}voice" to join a channel.""")
           .build())
       }
     } else {
@@ -117,40 +122,40 @@ class SongQueueCommand extends Command {
         .appendString("No arguments were specified!")
         .build())
     }
-  }
 
-  private def hasError(message: String, e: MessageReceivedEvent): Boolean = {
-    if (message == SongResponse.SC_RESOLVE_BAD_URL.toString) {
-      e.getTextChannel.sendMessage(new MessageBuilder()
-        .appendString("The url given was invalid (or at least made the SoundCloud API request invalid)! Make sure the URL is correct.")
-        .build())
-      true
-    } else if (message == SongResponse.SC_RESOLVE_RESPONSE_NOT_302.toString) {
-      e.getTextChannel.sendMessage(new MessageBuilder()
-        .appendString("The response was not what was expected (302)! You probably provided a non-Soundcloud link.")
-        .build())
-      true
-    } else if (message == SongResponse.SC_RESOLVE_IOEXCEPTION.toString) {
-      e.getTextChannel.sendMessage(new MessageBuilder()
-        .appendString("An unknown error occurred! Maybe try requesting the song again?")
-        .build())
-      true
-    } else if (message == SongResponse.SC_STREAM_NOT_STREAMABLE.toString) {
-      e.getTextChannel.sendMessage(new MessageBuilder()
-        .appendString("The requested song is not streamable! Try another song.")
-        .build())
-      true
-    } else if (message == SongResponse.SC_STREAM_MISSING_STREAM_URL.toString) {
-      e.getTextChannel.sendMessage(new MessageBuilder()
-        .appendString("The track stream could not be found! Try requesting the song again.")
-        .build())
-      true
-    } else if (message == SongResponse.SC_STREAM_CANNOT_CONNECT.toString) {
-      e.getTextChannel.sendMessage(new MessageBuilder()
-        .appendString("Could not connect to the track stream! Try requesting the song again.")
-        .build())
-      true
-    } else false
+    def hasError(error: Int): Boolean = {
+      if (error == SCResult.SC_RESOLVE_CREATE_FAIL.id) {
+        e.getTextChannel.sendMessage(new MessageBuilder()
+          .appendString("The url given was invalid (or at least made the SoundCloud API request invalid)! Make sure the URL is correct.")
+          .build())
+        true
+      } else if (error == SCResult.SC_RESOLVE_CONNECT_FAIL.id) {
+        e.getTextChannel.sendMessage(new MessageBuilder()
+          .appendString("Could not connect to the Soundcloud API! Try requesting again at a later time.")
+          .build())
+        true
+      } else if (error == SCResult.SC_RESOLVE_INVALID_RESPONSE_CODE.id) {
+        e.getTextChannel.sendMessage(new MessageBuilder()
+          .appendString("The response was not what was expected (302)! You probably provided a non-Soundcloud link.")
+          .build())
+        true
+      } else if (error == SCResult.SC_TRACK_NOT_STREAMABLE.id) {
+        e.getTextChannel.sendMessage(new MessageBuilder()
+          .appendString("The requested song is not streamable! Try another song.")
+          .build())
+        true
+      } else if (error == SCResult.SC_STREAM_URL_CREATE_FAIL.id) {
+        e.getTextChannel.sendMessage(new MessageBuilder()
+          .appendString("The url given was invalid (or at least made the stream request invalid)! Make sure the URL is correct.")
+          .build())
+        true
+      } else if (error == SCResult.SC_STREAM_URL_CONNECT_FAIL.id) {
+        e.getTextChannel.sendMessage(new MessageBuilder()
+          .appendString("Could not connect to the track stream! Try requesting the song again.")
+          .build())
+        true
+      } else false
+    }
   }
 
 }

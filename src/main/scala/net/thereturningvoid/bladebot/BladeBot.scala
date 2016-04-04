@@ -11,6 +11,7 @@ import net.dv8tion.jda.utils.InviteUtil
 import net.dv8tion.jda.{MessageBuilder, JDABuilder, JDA}
 import net.thereturningvoid.bladebot.command._
 import net.thereturningvoid.bladebot.Predefs._
+import net.thereturningvoid.bladebot.util.ScalaSAM._
 import org.apache.commons.lang3.StringUtils
 
 import scala.collection.JavaConversions._
@@ -81,8 +82,9 @@ object BladeBot {
           case e: NoSuchElementException => Some("The given user does not exist!")
         }
       case "acceptinvite" =>
-        InviteUtil.join(input(1), jda.get)
-        Some("Joined server!")
+        println(input(1))
+        InviteUtil.join(InviteUtil.resolve(input(1)), jda.get, Consumer[Guild](g => println("Joined the \"" + g.getName + "\" guild!")))
+        Some("")
       case "setplaying" =>
         val game: String = input.drop(1).mkString(" ")
         getJDA.getAccountManager.setGame(game)
@@ -129,6 +131,7 @@ object BladeBot {
       jdaBuilder.addListener(help.registerCommand(new AvatarCommand))
       jdaBuilder.addListener(help.registerCommand(new OperatorCommand))
       jdaBuilder.addListener(help.registerCommand(new SongQueueCommand))
+      jdaBuilder.addListener(help.registerCommand(new GitCommand))
 
       // Connect with proxy if one is specified
       if (settings.proxyHost != null && !settings.proxyHost.isEmpty) {
